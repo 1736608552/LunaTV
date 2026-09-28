@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, no-console */
 import crypto from 'crypto';
-import { ApiSite } from '../config';
-import { SearchResult } from '../types';
-import { cleanHtmlTags } from '../utils';
-import { decorateSearchResultQuality } from '../video-quality';
-import { SourceProvider } from './types';
+import { ApiSite } from '@/lib/config';
+import { SearchResult } from '@/lib/types';
+import { cleanHtmlTags } from '@/lib/utils';
+import { decorateSearchResultQuality } from '@/lib/video-quality';
+import { SourceProvider } from '@/lib/providers/types';
 
 export class AppGetProvider implements SourceProvider {
   name = 'appget';

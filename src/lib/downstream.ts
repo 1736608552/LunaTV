@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
-import { findProvider } from '@/lib/providers';
+import { findProvider } from '@/lib/providers/index';
 import { getCachedSearchPage, setCachedSearchPage } from '@/lib/search-cache';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';

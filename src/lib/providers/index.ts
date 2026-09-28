@@ -1,12 +1,12 @@
-import { ApiSite } from '../config';
-import { SourceProvider } from './types';
-import { CzsappProvider } from './czsapp';
-import { JpysProvider } from './jpys';
-import { DubokuProvider } from './duboku';
-import { AikanProvider } from './aikan';
-import { ReboProvider } from './rebo';
-import { C1905Provider } from './c1905';
-import { AppGetProvider } from './appget';
+import { ApiSite } from '@/lib/config';
+import { SourceProvider } from '@/lib/providers/types';
+import { CzsappProvider } from '@/lib/providers/czsapp';
+import { JpysProvider } from '@/lib/providers/jpys';
+import { DubokuProvider } from '@/lib/providers/duboku';
+import { AikanProvider } from '@/lib/providers/aikan';
+import { ReboProvider } from '@/lib/providers/rebo';
+import { C1905Provider } from '@/lib/providers/c1905';
+import { AppGetProvider } from '@/lib/providers/appget';
 
 // 注册所有协议驱动 Provider 实例（解耦设计，源本身不写死，纯靠驱动匹配）
 const providers: SourceProvider[] = [
@@ -32,11 +32,12 @@ export function findProvider(site: ApiSite): SourceProvider | null {
   return null;
 }
 
-export * from './types';
-export * from './czsapp';
-export * from './jpys';
-export * from './duboku';
-export * from './aikan';
-export * from './rebo';
-export * from './c1905';
-export * from './appget';
+export * from '@/lib/providers/types';
+export * from '@/lib/providers/czsapp';
+export * from '@/lib/providers/jpys';
+export * from '@/lib/providers/duboku';
+export * from '@/lib/providers/aikan';
+export * from '@/lib/providers/rebo';
+export * from '@/lib/providers/c1905';
+export * from '@/lib/providers/appget';
+

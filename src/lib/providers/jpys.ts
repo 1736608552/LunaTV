@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, no-console */
 import crypto from 'crypto';
-import { ApiSite } from '../config';
-import { SearchResult } from '../types';
-import { cleanHtmlTags } from '../utils';
-import { decorateSearchResultQuality } from '../video-quality';
-import { SourceProvider } from './types';
+import { ApiSite } from '@/lib/config';
+import { SearchResult } from '@/lib/types';
+import { cleanHtmlTags } from '@/lib/utils';
+import { decorateSearchResultQuality } from '@/lib/video-quality';
+import { SourceProvider } from '@/lib/providers/types';
 
 const DEFAULT_BASE_URL = 'https://www.hkybqufgh.com';
 const SIGN_KEY = 'cb808529bae6b6be45ecfab29a4889bc';
