@@ -129,8 +129,8 @@ export class AppGetProvider implements SourceProvider {
             id,
             title: cleanHtmlTags(title),
             poster,
-            episodes: [`${baseUrl}/api.php/getappapi.index/vodDetail?vod_id=${id}`],
-            episodes_titles: ['全集/详情'],
+            episodes: [],
+            episodes_titles: [],
             source: site.key,
             source_name: site.name,
             year: item.vod_year ? String(item.vod_year) : '',
@@ -186,22 +186,39 @@ export class AppGetProvider implements SourceProvider {
         const vod = decrypted.vod || decrypted.data || decrypted;
         const title = String(vod.vod_name || id).trim();
         const poster = String(vod.vod_pic || '').trim();
-        const playLists = decrypted.vod_play_list || [];
+        const playLists: any[] = decrypted.vod_play_list || [];
 
         const episodes: string[] = [];
         const episodesTitles: string[] = [];
 
-        // 提取最佳播放线路或合并线路
-        if (Array.isArray(playLists) && playLists.length > 0) {
-          // 优先选取包含 urls 且数量最多或包含 m3u8 的线路
-          let bestList = playLists[0];
-          for (const pl of playLists) {
-            if (Array.isArray(pl.urls) && pl.urls.length > (bestList.urls?.length || 0)) {
-              bestList = pl;
-            }
-          }
+        // 线路质量智能评分与死链淘汰机制
+        const getLineScore = (pl: any): number => {
+          const from = String(pl.from || '').toLowerCase();
+          const firstUrl = String(pl.urls?.[0]?.url || pl.urls?.[0]?.parse_api_url || '').toLowerCase();
 
-          if (Array.isArray(bestList.urls)) {
+          // 彻底淘汰已知死链/无法连通域名
+          if (firstUrl.includes('tyyszywvod') || firstUrl.includes('fengbao12.com')) return -100;
+
+          // 国内极速/高质量秒播切片专线优先
+          if (from.includes('hnm3u8') || firstUrl.includes('bfvvs.com')) return 100;
+          if (from.includes('ffm3u8') || firstUrl.includes('ffzy')) return 95;
+          if (from.includes('rym3u8') || firstUrl.includes('ryplay')) return 90;
+          if (from.includes('1080zyk')) return 85;
+          if (from.includes('lzm3u8') || firstUrl.includes('lfthirtytwo')) return 80;
+          if (from.includes('jsm3u8') || firstUrl.includes('jisuzy')) return 75;
+          if (from.includes('dbm3u8')) return 70;
+          if (firstUrl.includes('.m3u8')) return 50;
+          return 10;
+        };
+
+        if (Array.isArray(playLists) && playLists.length > 0) {
+          // 按质量评分从高到低排序线路
+          const sortedLists = [...playLists].sort((a, b) => getLineScore(b) - getLineScore(a));
+
+          // 优先选用评分最高且非死链的线路
+          const bestList = sortedLists.find(l => getLineScore(l) > 0) || sortedLists[0];
+
+          if (bestList && Array.isArray(bestList.urls)) {
             bestList.urls.forEach((u: any, idx: number) => {
               const epUrl = u.url || u.parse_api_url;
               const epName = u.name || `第${idx + 1}集`;
@@ -211,14 +228,31 @@ export class AppGetProvider implements SourceProvider {
               }
             });
           }
+
+          // 若最佳线路集数较少（如单集电影正片），将其他可用优质线路也合并进入备用选集
+          if (episodes.length <= 2) {
+            sortedLists.slice(1, 4).forEach((otherList) => {
+              if (getLineScore(otherList) > 0 && Array.isArray(otherList.urls)) {
+                otherList.urls.forEach((u: any) => {
+                  const epUrl = u.url || u.parse_api_url;
+                  const lineTag = otherList.name || otherList.from || '备用';
+                  const epName = u.name ? `[${lineTag}] ${u.name}` : `[${lineTag}] 播放线路`;
+                  if (epUrl && !episodes.includes(epUrl)) {
+                    episodes.push(epUrl);
+                    episodesTitles.push(epName);
+                  }
+                });
+              }
+            });
+          }
         }
 
         const result: SearchResult = {
           id,
           title: cleanHtmlTags(title),
           poster,
-          episodes: episodes.length > 0 ? episodes : [`${baseUrl}/api.php/getappapi.index/vodDetail?vod_id=${id}`],
-          episodes_titles: episodesTitles.length > 0 ? episodesTitles : ['正片'],
+          episodes,
+          episodes_titles: episodesTitles,
           source: site.key,
           source_name: site.name,
           year: vod.vod_year ? String(vod.vod_year) : '',

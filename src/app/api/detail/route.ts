@@ -264,28 +264,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 400 });
     }
 
-    // 优先通过搜索匹配（如果有 title）
     let result: any = null;
 
-    if (title.trim()) {
+    // 优先：若源具备专属 Provider 详情驱动，直接通过 getDetailFromApi 精准提取解密直链
+    try {
+      result = await getDetailFromApi(apiSite, id);
+    } catch {
+      // 若专属驱动获取失败，继续尝试兜底
+    }
+
+    // 次选：通过搜索匹配（如果直接详情未获取到或未包含有效分集）
+    const hasValidEpisodes = result && Array.isArray(result.episodes) && result.episodes.length > 0 &&
+      !result.episodes.some((u: string) => u.includes('vodDetail') || u.includes('getappapi'));
+
+    if (!hasValidEpisodes && title.trim()) {
       try {
         const searchResults = await searchFromApi(apiSite, title.trim());
-        result = searchResults.find(
+        const matched = searchResults.find(
           (item: any) =>
             item.source?.toString() === sourceCode.toString() &&
             item.id?.toString() === id.toString()
-        ) || null;
+        );
+        if (matched && Array.isArray(matched.episodes) && matched.episodes.length > 0) {
+          result = matched;
+        }
       } catch {
-        // 搜索失败，继续尝试直接获取详情
-      }
-    }
-
-    // Fallback: 直接通过 ID 获取详情
-    if (!result) {
-      try {
-        result = await getDetailFromApi(apiSite, id);
-      } catch {
-        // 直接获取也失败
+        // 搜索匹配失败
       }
     }
 
