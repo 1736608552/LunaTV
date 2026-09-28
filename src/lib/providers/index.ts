@@ -6,9 +6,11 @@ import { DubokuProvider } from './duboku';
 import { AikanProvider } from './aikan';
 import { ReboProvider } from './rebo';
 import { C1905Provider } from './c1905';
+import { AppGetProvider } from './appget';
 
 // 注册所有协议驱动 Provider 实例（解耦设计，源本身不写死，纯靠驱动匹配）
 const providers: SourceProvider[] = [
+  new AppGetProvider(),
   new CzsappProvider(),
   new JpysProvider(),
   new DubokuProvider(),
@@ -37,3 +39,4 @@ export * from './duboku';
 export * from './aikan';
 export * from './rebo';
 export * from './c1905';
+export * from './appget';
