@@ -1,4 +1,4 @@
-import { ApiSite } from '@/lib/config';
+import { ApiSite } from '../config';
 import { SourceProvider } from './types';
 import { CzsappProvider } from './czsapp';
 import { JpysProvider } from './jpys';

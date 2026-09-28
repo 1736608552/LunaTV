@@ -1,5 +1,5 @@
-import { ApiSite } from '@/lib/config';
-import { SearchResult } from '@/lib/types';
+import { ApiSite } from '../config';
+import { SearchResult } from '../types';
 
 export interface SourceProvider {
   /** 驱动标识，如 'czsapp' | 'jpys' | 'aikan' | 'duboku' 等 */
