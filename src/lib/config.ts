@@ -12,6 +12,9 @@ export interface ApiSite {
   api: string;
   name: string;
   detail?: string;
+  type?: string;
+  ext?: any;
+  header?: Record<string, string>;
 }
 
 export interface LiveCfg {
@@ -101,7 +104,10 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
       existingSource.name = site.name;
       existingSource.api = site.api;
       existingSource.detail = site.detail;
-      // 保留用户手动设置的 from、type、is_adult、disabled 等字段
+      if (site.type) existingSource.type = site.type;
+      if (site.ext !== undefined) existingSource.ext = site.ext;
+      if (site.header !== undefined) existingSource.header = site.header;
+      // 保留用户手动设置的 from、is_adult、disabled 等字段
     } else {
       // 添加新的订阅源
       currentApiSites.set(key, {
@@ -111,7 +117,9 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
         detail: site.detail,
         from: 'config',
         disabled: false,
-        type: 'vod', // 默认为普通视频类型
+        type: site.type || 'vod', // 支持自定义驱动类型
+        ext: site.ext,
+        header: site.header,
       });
     }
   });
@@ -802,6 +810,9 @@ export async function getAvailableApiSites(user?: string): Promise<ApiSite[]> {
       name: s.name,
       api: s.api,
       detail: s.detail,
+      type: s.type,
+      ext: s.ext,
+      header: s.header,
     }));
     return applyVideoProxy(userSites, config);
   }
@@ -824,6 +835,9 @@ export async function getAvailableApiSites(user?: string): Promise<ApiSite[]> {
         name: s.name,
         api: s.api,
         detail: s.detail,
+        type: s.type,
+        ext: s.ext,
+        header: s.header,
       }));
       return applyVideoProxy(tagSites, config);
     }

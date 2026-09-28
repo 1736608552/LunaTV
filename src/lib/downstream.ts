@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
+import { findProvider } from '@/lib/providers';
 import { getCachedSearchPage, setCachedSearchPage } from '@/lib/search-cache';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
@@ -185,6 +186,19 @@ export async function searchFromApi(
     // 自动兼容判断：如果是纯解析线路（非CMS采集站，如含 ?url=），直接安全返回空结果，避免拖慢全局搜片并发
     if (apiBaseUrl.includes('?url=') || apiBaseUrl.includes('&url=')) {
       return [];
+    }
+
+    // 优先调用匹配的专线 Provider（如厂长、金牌、爱看、独播、热播、1905等动态驱动）
+    const provider = findProvider(apiSite);
+    if (provider) {
+      try {
+        const providerResults = await provider.search(query, apiSite);
+        if (providerResults && providerResults.length > 0) {
+          return providerResults;
+        }
+      } catch (providerError) {
+        console.warn(`[searchFromApi] Provider ${provider.name} 搜索异常:`, providerError);
+      }
     }
 
     // 智能搜索：使用预计算的变体（最多2个，由 generateSearchVariants 智能生成）
@@ -515,6 +529,19 @@ export async function getDetailFromApi(
   apiSite: ApiSite,
   id: string
 ): Promise<SearchResult> {
+  // 优先匹配专线 Provider 获取详情与播放选集列表
+  const provider = findProvider(apiSite);
+  if (provider && provider.detail) {
+    try {
+      const providerDetail = await provider.detail(id, apiSite);
+      if (providerDetail) {
+        return providerDetail;
+      }
+    } catch (providerError) {
+      console.warn(`[getDetailFromApi] Provider ${provider.name} 详情获取异常:`, providerError);
+    }
+  }
+
   if (apiSite.detail) {
     return handleSpecialSourceDetail(id, apiSite);
   }
