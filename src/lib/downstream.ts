@@ -86,7 +86,9 @@ async function searchWithCache(
             const episode_title_url = title_url.split('$');
             if (
               episode_title_url.length === 2 &&
-              episode_title_url[1].endsWith('.m3u8')
+              (episode_title_url[1].includes('.m3u8') ||
+                episode_title_url[1].includes('.mp4') ||
+                episode_title_url[1].startsWith('http'))
             ) {
               matchTitles.push(episode_title_url[0]);
               matchEpisodes.push(episode_title_url[1]);
@@ -140,7 +142,11 @@ export async function searchFromApi(
   query: string
 ): Promise<SearchResult[]> {
   try {
-    const apiBaseUrl = apiSite.api;
+    const apiBaseUrl = (apiSite.api || '').trim();
+    // 纯播放/解析代理（含 ?url= 或以 .m3u8 结尾）无 CMS 影片索引，快速返回空，避免下游报错或超时
+    if (apiBaseUrl.includes('?url=') || apiBaseUrl.includes('&url=') || apiBaseUrl.endsWith('.m3u8')) {
+      return [];
+    }
     const apiUrl =
       apiBaseUrl + API_CONFIG.search.path + encodeURIComponent(query);
 
@@ -201,7 +207,14 @@ export async function getDetailFromApi(
   apiSite: ApiSite,
   id: string
 ): Promise<SearchResult> {
-  if (apiSite.detail) {
+  // 仅当非标准 JSON API 且明确带有 detail 时，才尝试 HTML 详情爬取；标准采集接口一律直接走高速 JSON API
+  const isStandardJsonApi =
+    apiSite.api.includes('/api.php') ||
+    apiSite.api.includes('/provide/vod') ||
+    apiSite.api.includes('zyapi.php') ||
+    apiSite.api.includes('ac=videolist') ||
+    apiSite.api.includes('ac=detail');
+  if (apiSite.detail && !isStandardJsonApi) {
     return handleSpecialSourceDetail(id, apiSite);
   }
 
@@ -249,7 +262,9 @@ export async function getDetailFromApi(
         const episode_title_url = title_url.split('$');
         if (
           episode_title_url.length === 2 &&
-          episode_title_url[1].endsWith('.m3u8')
+          (episode_title_url[1].includes('.m3u8') ||
+            episode_title_url[1].includes('.mp4') ||
+            episode_title_url[1].startsWith('http'))
         ) {
           matchTitles.push(episode_title_url[0]);
           matchEpisodes.push(episode_title_url[1]);
