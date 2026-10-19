@@ -1335,15 +1335,25 @@ function PlayPageClient() {
               video.hls.destroy();
             }
             const hls = new Hls({
-              debug: false, // 关闭日志
-              enableWorker: true, // WebWorker 解码，降低主线程压力
-              lowLatencyMode: false, // 点播无需低延迟，关闭后缓冲更充足，弱网下不易卡顿
+              debug: false,
+              enableWorker: true, // WebWorker 解码，完全独立于 UI 线程，保障页面交互 60fps 满帧
+              lowLatencyMode: false,
+              progressive: true, // 咕噜咕噜黑科技：流式边下边推直通，首块数据即刻启动 Demux 解码
+              startFragPrefetch: true, // 咕噜咕噜黑科技：首切片极速预取秒开
+              testBandwidth: false, // 咕噜咕噜黑科技：禁用首播测速等待，直达最快起播
 
-              /* 缓冲/内存相关 */
-              maxBufferLength: 60, // 前向缓冲最大 60s，出网带宽小的源可提前缓冲，减少卡顿
-              maxMaxBufferLength: 120, // 网络较差时允许缓冲区扩大到 120s
-              backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
-              maxBufferSize: 100 * 1000 * 1000, // 约 100MB，超出后触发清理
+              /* 缓冲与内存管理 */
+              maxBufferLength: 60, // 前向缓冲最大 60s
+              maxMaxBufferLength: 120,
+              backBufferLength: 30, // 保留 30s 播放历史，快退 5 秒零二次缓冲
+              maxBufferSize: 120 * 1000 * 1000, // 120MB 环形内存池
+              maxBufferHole: 0.5, // 容忍 0.5s 小空洞
+              highBufferWatchdogPeriod: 2, // 缓冲看门狗监控
+              nudgeOffset: 0.1, // 微缝平滑跳跃，杜绝时间戳缝隙死循环转圈
+              nudgeMaxRetry: 5,
+              manifestLoadingTimeOut: 10000,
+              levelLoadingTimeOut: 10000,
+              fragLoadingTimeOut: 20000,
 
               /* 自定义loader */
               loader: blockAdEnabledRef.current
