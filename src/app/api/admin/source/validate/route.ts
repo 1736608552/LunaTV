@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
 import { API_CONFIG, getConfig } from '@/lib/config';
-import { isProxyParseSite } from '@/lib/downstream';
+import { getGuluMappedSite, isProxyParseSite } from '@/lib/downstream';
 
 export const runtime = 'nodejs';
 
@@ -108,8 +108,9 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          // 构建搜索URL，只获取第一页
-          const searchUrl = `${site.api}?ac=videolist&wd=${encodeURIComponent(searchKeyword)}`;
+          // 构建搜索URL，只获取第一页 (优先使用咕噜专线映射的真实高可用采集站)
+          const effectiveApi = getGuluMappedSite(site)?.api || site.api;
+          const searchUrl = `${effectiveApi}?ac=videolist&wd=${encodeURIComponent(searchKeyword)}`;
 
           // 设置超时控制
           const controller = new AbortController();

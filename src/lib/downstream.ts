@@ -138,10 +138,131 @@ async function searchWithCache(
 }
 
 /**
+ * 咕噜咕噜官方专线映射表 (复刻 GuluGuluTV 官方架构，映射至高可用秒播直连切片源)
+ */
+export const GULUGULU_OFFICIAL_MAPPINGS: {
+  match: (site: ApiSite) => boolean;
+  targetApi: string;
+  defaultName: string;
+}[] = [
+  {
+    // 咕噜直连切片代理 / glgl.tv (Live M3U8) -> 光速专线 (高并发节点)
+    match: (s) => {
+      const api = (s.api || '').toLowerCase();
+      const key = (s.key || '').toLowerCase();
+      const name = (s.name || '').toLowerCase();
+      return (
+        api.includes('glgl.tv') ||
+        key.includes('glgl') ||
+        name.includes('咕噜专线代理解析') ||
+        name.includes('咕噜直连切片')
+      );
+    },
+    targetApi: 'https://api.guangsuapi.com/api.php/provide/vod/',
+    defaultName: '光速专线',
+  },
+  {
+    // 咕噜1号官方专线 / 1ljx.com 主力解析及 API 直连 -> 量子专线 (秒播切片)
+    match: (s) => {
+      const api = (s.api || '').toLowerCase();
+      const key = (s.key || '').toLowerCase();
+      const name = (s.name || '').toLowerCase();
+      return (
+        api.includes('1ljx.com') ||
+        key.includes('1ljx') ||
+        name.includes('1号线路') ||
+        name.includes('咕噜1号')
+      );
+    },
+    targetApi: 'https://cj.lziapi.com/api.php/provide/vod/',
+    defaultName: '量子专线',
+  },
+  {
+    // 虾米极速秒播解析 / xmflv.com -> 红牛资源 (超清综合)
+    match: (s) => {
+      const api = (s.api || '').toLowerCase();
+      const key = (s.key || '').toLowerCase();
+      const name = (s.name || '').toLowerCase();
+      return (
+        api.includes('xmflv.com') ||
+        key.includes('xmflv') ||
+        name.includes('虾米') ||
+        name.includes('极速秒播解析')
+      );
+    },
+    targetApi: 'https://www.hongniuzy2.com/api.php/provide/vod/',
+    defaultName: '红牛资源',
+  },
+  {
+    // 金鹰蓝光大片解析 / playerjy.com -> 金鹰影视 (蓝光大片)
+    match: (s) => {
+      const api = (s.api || '').toLowerCase();
+      const key = (s.key || '').toLowerCase();
+      const name = (s.name || '').toLowerCase();
+      return (
+        api.includes('playerjy.com') ||
+        key.includes('playerjy') ||
+        name.includes('金鹰') ||
+        name.includes('优质蓝光解析')
+      );
+    },
+    targetApi: 'https://jyzyapi.com/api.php/provide/vod/',
+    defaultName: '金鹰影视',
+  },
+  {
+    // UC影音加速专线 / ucyy.cn -> 暴风专线 (高速秒播)
+    match: (s) => {
+      const api = (s.api || '').toLowerCase();
+      const key = (s.key || '').toLowerCase();
+      const name = (s.name || '').toLowerCase();
+      return (
+        api.includes('ucyy.cn') ||
+        key.includes('ucyy') ||
+        name.includes('uc影音') ||
+        name.includes('uc_speed')
+      );
+    },
+    targetApi: 'https://bfzyapi.com/api.php/provide/vod/',
+    defaultName: '暴风专线',
+  },
+];
+
+/**
+ * 获取咕噜咕噜官方专线映射的真实执行采集源
+ */
+export function getGuluMappedSite(site: ApiSite): ApiSite | null {
+  if (!site || !site.api) return null;
+  const apiLower = site.api.toLowerCase().trim();
+  const isDirectCms =
+    apiLower.includes('/api.php/provide/vod/') ||
+    apiLower.includes('/provide/vod/');
+
+  // 若本身已是纯 CMS 采集接口且不带代理解析参数，无需映射
+  if (isDirectCms && !apiLower.includes('?url=') && !apiLower.includes('live.m3u8')) {
+    return null;
+  }
+
+  for (const m of GULUGULU_OFFICIAL_MAPPINGS) {
+    if (m.match(site)) {
+      return {
+        key: site.key,
+        name: site.name,
+        api: m.targetApi,
+      };
+    }
+  }
+  return null;
+}
+
+/**
  * 判断是否为代理解析/播放代理型视频源 (含 ?url=, &url=, live.m3u8, 纯解析口)
  */
 export function isProxyParseSite(site: ApiSite): boolean {
   if (!site || !site.api) return false;
+  // 能命中咕噜咕噜官方映射的，直接按高可用真实采集源调度，绝不走残缺代理解析通道
+  if (getGuluMappedSite(site)) {
+    return false;
+  }
   const api = site.api.trim().toLowerCase();
   return (
     api.includes('?url=') ||
@@ -187,6 +308,28 @@ export async function searchFromApi(
   query: string
 ): Promise<SearchResult[]> {
   try {
+    // 咕噜咕噜官方专线映射：直接用目标高速秒播采集站执行搜索并返回真实直链切片
+    const guluMapped = getGuluMappedSite(apiSite);
+    if (guluMapped) {
+      const realResults = await searchFromApi(
+        {
+          key: apiSite.key,
+          name: apiSite.name,
+          api: guluMapped.api,
+        },
+        query
+      );
+      return realResults.map((item) => ({
+        ...item,
+        id: `${apiSite.key}___${apiSite.key}___${item.id}`,
+        source: apiSite.key,
+        source_name: apiSite.name,
+        // 真实 M3U8 秒播切片直链，不加任何死链前缀
+        episodes: item.episodes || [],
+        episodes_titles: item.episodes_titles,
+      }));
+    }
+
     const apiBaseUrl = (apiSite.api || '').trim();
     // 代理解析源借用种子源拉取影片分集并包装返回
     if (isProxyParseSite(apiSite)) {
@@ -269,6 +412,30 @@ export async function getDetailFromApi(
   apiSite: ApiSite,
   id: string
 ): Promise<SearchResult> {
+  // 咕噜官方专线映射处理：直接获取真实采集站详情与高清直链切片
+  const guluMapped = getGuluMappedSite(apiSite);
+  if (guluMapped) {
+    let realId = id;
+    if (id.includes('___')) {
+      const parts = id.split('___');
+      realId = parts[2] || id;
+    }
+    const targetSite = {
+      key: apiSite.key,
+      name: apiSite.name,
+      api: guluMapped.api,
+    };
+    const realDetail = await getDetailFromApi(targetSite, realId);
+    return {
+      ...realDetail,
+      id: id,
+      source: apiSite.key,
+      source_name: apiSite.name,
+      episodes: realDetail.episodes || [],
+      episodes_titles: realDetail.episodes_titles,
+    };
+  }
+
   // 代理解析型源或三段式 ID 处理
   if (isProxyParseSite(apiSite) || id.includes('___')) {
     let baseSourceKey = '';

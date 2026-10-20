@@ -213,21 +213,60 @@ function PlayPageClient() {
   const isWebPagePlayer = (url: string): boolean => {
     if (!url) return false;
     const u = url.toLowerCase().trim();
-    if (u.includes('.m3u8') || u.includes('.mp4')) {
-      if (u.includes('live.m3u8') || u.endsWith('.m3u8') || u.endsWith('.mp4')) {
-        return false;
+
+    try {
+      const parsed = new URL(url);
+      const searchTarget =
+        parsed.searchParams.get('url') || parsed.searchParams.get('v');
+      // 1. 无解析目标参数，纯媒体路径走流播放器
+      if (!searchTarget) {
+        if (
+          parsed.pathname.endsWith('.m3u8') ||
+          parsed.pathname.endsWith('.mp4') ||
+          parsed.pathname.endsWith('.flv')
+        ) {
+          return false;
+        }
+      } else {
+        // 2. 含有 ?url= 参数
+        // 若不是 live.m3u8 代理流，且域名或路径是典型的 Web 网页解析器，则走 iframe
+        if (
+          !parsed.pathname.includes('live.m3u8') &&
+          !parsed.pathname.endsWith('.m3u8') &&
+          (parsed.hostname.includes('1ljx.com') ||
+            parsed.hostname.includes('xmflv.com') ||
+            parsed.hostname.includes('playerjy.com') ||
+            parsed.hostname.includes('jsonplayer.com') ||
+            parsed.hostname.startsWith('jx.') ||
+            parsed.pathname.includes('/player/') ||
+            parsed.pathname.includes('/api.php'))
+        ) {
+          return true;
+        }
       }
+    } catch (_) {}
+
+    // 兜底判定
+    if (u.endsWith('.m3u8') || u.endsWith('.mp4')) {
+      return false;
     }
-    if (
-      u.includes('1ljx.com') ||
-      u.includes('xmflv.com') ||
-      u.includes('playerjy.com') ||
-      u.includes('/api.php?url=') ||
-      (u.includes('?url=http') && !u.includes('live.m3u8'))
-    ) {
+    if (u.includes('?url=http') && !u.includes('live.m3u8')) {
       return true;
     }
     return false;
+  };
+
+  // 在 HTTPS 环境下将 HTTP 视频流安全转接至本地 M3U8 代理，杜绝 Mixed Content 浏览器阻断
+  const getSafePlayUrl = (rawUrl: string): string => {
+    if (!rawUrl) return '';
+    if (
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      rawUrl.toLowerCase().startsWith('http://')
+    ) {
+      return `/api/proxy/m3u8?url=${encodeURIComponent(rawUrl)}`;
+    }
+    return rawUrl;
   };
 
   // 播放源优选函数
@@ -1291,16 +1330,18 @@ function PlayPageClient() {
       typeof window !== 'undefined' &&
       typeof (window as any).webkitConvertPointFromNodeToPage === 'function';
 
+    const safeUrl = getSafePlayUrl(videoUrl);
+
     // 非WebKit浏览器且播放器已存在，使用switch方法切换
     if (!isWebkit && artPlayerRef.current) {
-      artPlayerRef.current.switch = videoUrl;
+      artPlayerRef.current.switch = safeUrl;
       artPlayerRef.current.title = `${videoTitle} - 第${currentEpisodeIndex + 1
         }集`;
       artPlayerRef.current.poster = videoCover;
       if (artPlayerRef.current?.video) {
         ensureVideoSource(
           artPlayerRef.current.video as HTMLVideoElement,
-          videoUrl
+          safeUrl
         );
       }
       return;
@@ -1319,7 +1360,7 @@ function PlayPageClient() {
 
       artPlayerRef.current = new Artplayer({
         container: artRef.current,
-        url: videoUrl,
+        url: safeUrl,
         poster: videoCover,
         volume: 0.7,
         isLive: false,
