@@ -137,14 +137,76 @@ async function searchWithCache(
   }
 }
 
+/**
+ * 判断是否为代理解析/播放代理型视频源 (含 ?url=, &url=, live.m3u8, 纯解析口)
+ */
+export function isProxyParseSite(site: ApiSite): boolean {
+  if (!site || !site.api) return false;
+  const api = site.api.trim().toLowerCase();
+  return (
+    api.includes('?url=') ||
+    api.includes('&url=') ||
+    api.includes('live.m3u8') ||
+    api.endsWith('.m3u8') ||
+    api.includes('api.php?url=')
+  );
+}
+
+/**
+ * 将原始视频播放地址与代理解析接口拼接
+ */
+export function buildProxyPlayUrl(proxyApi: string, rawUrl: string): string {
+  if (!rawUrl) return '';
+  const trimmedApi = (proxyApi || '').trim();
+  if (!trimmedApi) return rawUrl;
+
+  if (
+    trimmedApi.endsWith('=') ||
+    trimmedApi.endsWith('?url=') ||
+    trimmedApi.includes('?url=') ||
+    trimmedApi.includes('&url=')
+  ) {
+    return `${trimmedApi}${rawUrl}`;
+  }
+  if (trimmedApi.includes('?')) {
+    return `${trimmedApi}&url=${encodeURIComponent(rawUrl)}`;
+  }
+  return `${trimmedApi}?url=${encodeURIComponent(rawUrl)}`;
+}
+
+// 内置高可用种子源 (供代理解析型视频源作为索引基座借用)
+export const DEFAULT_SEED_CMS_SITES: ApiSite[] = [
+  { key: 'seed_lzi', name: '量子专线', api: 'https://cj.lziapi.com/api.php/provide/vod/' },
+  { key: 'seed_jy', name: '金鹰影视', api: 'https://jyzyapi.com/provide/vod/' },
+  { key: 'seed_bf', name: '暴风专线', api: 'https://bfzyapi.com/api.php/provide/vod/' },
+  { key: 'seed_hn', name: '红牛资源', api: 'https://www.hongniuzy2.com/api.php/provide/vod/' },
+];
+
 export async function searchFromApi(
   apiSite: ApiSite,
   query: string
 ): Promise<SearchResult[]> {
   try {
     const apiBaseUrl = (apiSite.api || '').trim();
-    // 纯播放/解析代理（含 ?url= 或以 .m3u8 结尾）无 CMS 影片索引，快速返回空，避免下游报错或超时
-    if (apiBaseUrl.includes('?url=') || apiBaseUrl.includes('&url=') || apiBaseUrl.endsWith('.m3u8')) {
+    // 代理解析源借用种子源拉取影片分集并包装返回
+    if (isProxyParseSite(apiSite)) {
+      for (const seed of DEFAULT_SEED_CMS_SITES) {
+        try {
+          const baseResults = await searchFromApi(seed, query);
+          if (baseResults && baseResults.length > 0) {
+            return baseResults.map((item) => ({
+              ...item,
+              id: `${apiSite.key}___${item.source}___${item.id}`,
+              source: apiSite.key,
+              source_name: apiSite.name,
+              episodes: (item.episodes || []).map((epUrl) =>
+                buildProxyPlayUrl(apiSite.api, epUrl)
+              ),
+              episodes_titles: item.episodes_titles,
+            }));
+          }
+        } catch (_) {}
+      }
       return [];
     }
     const apiUrl =
@@ -207,6 +269,40 @@ export async function getDetailFromApi(
   apiSite: ApiSite,
   id: string
 ): Promise<SearchResult> {
+  // 代理解析型源或三段式 ID 处理
+  if (isProxyParseSite(apiSite) || id.includes('___')) {
+    let baseSourceKey = '';
+    let baseId = id;
+    if (id.includes('___')) {
+      const parts = id.split('___');
+      baseSourceKey = parts[1] || '';
+      baseId = parts[2] || id;
+    }
+
+    const config = await getConfig();
+    const sourceList = config.SourceConfig || [];
+    let baseSite: ApiSite | undefined = sourceList.find(
+      (s) => s.key === baseSourceKey && !isProxyParseSite(s)
+    );
+    if (!baseSite) {
+      baseSite =
+        sourceList.find((s) => !isProxyParseSite(s)) || DEFAULT_SEED_CMS_SITES[0];
+    }
+
+    const targetSite = baseSite || DEFAULT_SEED_CMS_SITES[0];
+    const baseDetail = await getDetailFromApi(targetSite, baseId);
+    return {
+      ...baseDetail,
+      id: id,
+      source: apiSite.key,
+      source_name: apiSite.name,
+      episodes: (baseDetail.episodes || []).map((u) =>
+        buildProxyPlayUrl(apiSite.api, u)
+      ),
+      episodes_titles: baseDetail.episodes_titles,
+    };
+  }
+
   // 仅当非标准 JSON API 且明确带有 detail 时，才尝试 HTML 详情爬取；标准采集接口一律直接走高速 JSON API
   const isStandardJsonApi =
     apiSite.api.includes('/api.php') ||

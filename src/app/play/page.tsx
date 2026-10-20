@@ -210,6 +210,26 @@ function PlayPageClient() {
   // 工具函数（Utils）
   // -----------------------------------------------------------------------------
 
+  const isWebPagePlayer = (url: string): boolean => {
+    if (!url) return false;
+    const u = url.toLowerCase().trim();
+    if (u.includes('.m3u8') || u.includes('.mp4')) {
+      if (u.includes('live.m3u8') || u.endsWith('.m3u8') || u.endsWith('.mp4')) {
+        return false;
+      }
+    }
+    if (
+      u.includes('1ljx.com') ||
+      u.includes('xmflv.com') ||
+      u.includes('playerjy.com') ||
+      u.includes('/api.php?url=') ||
+      (u.includes('?url=http') && !u.includes('live.m3u8'))
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   // 播放源优选函数
   const preferBestSource = async (
     sources: SearchResult[]
@@ -1256,7 +1276,15 @@ function PlayPageClient() {
       setError('视频地址无效');
       return;
     }
-    console.log(videoUrl);
+
+    // 网页解析播放器模式 (iframe)
+    if (isWebPagePlayer(videoUrl)) {
+      if (artPlayerRef.current) {
+        cleanupPlayer();
+      }
+      setIsVideoLoading(false);
+      return;
+    }
 
     // 检测是否为WebKit浏览器
     const isWebkit =
@@ -1901,10 +1929,21 @@ function PlayPageClient() {
                 }`}
             >
               <div className='relative w-full h-[300px] lg:h-full'>
-                <div
-                  ref={artRef}
-                  className='bg-black w-full h-full rounded-xl overflow-hidden shadow-lg'
-                ></div>
+                {isWebPagePlayer(videoUrl) ? (
+                  <iframe
+                    key={videoUrl}
+                    src={videoUrl}
+                    className='w-full h-full rounded-xl overflow-hidden shadow-lg border-0 bg-black'
+                    allow='fullscreen; autoplay; encrypted-media; picture-in-picture'
+                    allowFullScreen
+                    onLoad={() => setIsVideoLoading(false)}
+                  />
+                ) : (
+                  <div
+                    ref={artRef}
+                    className='bg-black w-full h-full rounded-xl overflow-hidden shadow-lg'
+                  ></div>
+                )}
 
                 {/* 换源加载蒙层 */}
                 {isVideoLoading && (
