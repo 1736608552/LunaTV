@@ -10,12 +10,84 @@ interface ApiSearchItem {
   vod_name: string;
   vod_pic: string;
   vod_remarks?: string;
+  vod_play_from?: string;
   vod_play_url?: string;
   vod_class?: string;
   vod_year?: string;
   vod_content?: string;
   vod_douban_id?: number;
   type_name?: string;
+}
+
+/**
+ * 智能筛选最佳播放分集组 (默认强制优先 4K / 原画 / 蓝光顶级画质组)
+ */
+export function selectBestEpisodesGroup(
+  playFromStr?: string,
+  playUrlStr?: string
+): { episodes: string[]; titles: string[] } {
+  if (!playUrlStr) return { episodes: [], titles: [] };
+
+  const playUrlGroups = playUrlStr.split('$$$');
+  const playFromGroups = (playFromStr || '').split('$$$');
+
+  let bestEpisodes: string[] = [];
+  let bestTitles: string[] = [];
+  let bestScore = -1;
+
+  for (let i = 0; i < playUrlGroups.length; i++) {
+    const rawUrlGroup = playUrlGroups[i];
+    const fromName = (playFromGroups[i] || '').toLowerCase();
+    const matchEpisodes: string[] = [];
+    const matchTitles: string[] = [];
+
+    const titleUrlArray = rawUrlGroup.split('#');
+    for (const item of titleUrlArray) {
+      const parts = item.split('$');
+      if (
+        parts.length === 2 &&
+        (parts[1].includes('.m3u8') ||
+          parts[1].includes('.mp4') ||
+          parts[1].startsWith('http'))
+      ) {
+        matchTitles.push(parts[0]);
+        matchEpisodes.push(parts[1]);
+      }
+    }
+
+    if (matchEpisodes.length === 0) continue;
+
+    // 计算该组的画质优先级评分：集数基础分 + 画质大加分
+    let score = matchEpisodes.length * 10;
+    const groupText = `${fromName} ${rawUrlGroup.slice(0, 300)}`.toLowerCase();
+
+    // 4K / 原画 / 蓝光 顶级画质：加 500 分，确保在集数完整时绝对默认选用 4K！
+    if (
+      groupText.includes('4k') ||
+      groupText.includes('2160') ||
+      groupText.includes('原画') ||
+      groupText.includes('蓝光') ||
+      groupText.includes('uhd')
+    ) {
+      score += 500;
+    } else if (groupText.includes('2k') || groupText.includes('1440')) {
+      score += 200;
+    } else if (
+      groupText.includes('1080') ||
+      groupText.includes('超清') ||
+      groupText.includes('fhd')
+    ) {
+      score += 50;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestEpisodes = matchEpisodes;
+      bestTitles = matchTitles;
+    }
+  }
+
+  return { episodes: bestEpisodes, titles: bestTitles };
 }
 
 /**
@@ -70,36 +142,11 @@ async function searchWithCache(
 
     // 处理结果数据
     const allResults = data.list.map((item: ApiSearchItem) => {
-      let episodes: string[] = [];
-      let titles: string[] = [];
-
-      // 使用正则表达式从 vod_play_url 提取 m3u8 链接
-      if (item.vod_play_url) {
-        // 先用 $$$ 分割
-        const vod_play_url_array = item.vod_play_url.split('$$$');
-        // 分集之间#分割，标题和播放链接 $ 分割
-        vod_play_url_array.forEach((url: string) => {
-          const matchEpisodes: string[] = [];
-          const matchTitles: string[] = [];
-          const title_url_array = url.split('#');
-          title_url_array.forEach((title_url: string) => {
-            const episode_title_url = title_url.split('$');
-            if (
-              episode_title_url.length === 2 &&
-              (episode_title_url[1].includes('.m3u8') ||
-                episode_title_url[1].includes('.mp4') ||
-                episode_title_url[1].startsWith('http'))
-            ) {
-              matchTitles.push(episode_title_url[0]);
-              matchEpisodes.push(episode_title_url[1]);
-            }
-          });
-          if (matchEpisodes.length > episodes.length) {
-            episodes = matchEpisodes;
-            titles = matchTitles;
-          }
-        });
-      }
+      // 智能选取最优播放组 (默认强制优先 4K / 原画 / 蓝光)
+      const { episodes, titles } = selectBestEpisodesGroup(
+        item.vod_play_from,
+        item.vod_play_url
+      );
 
       return {
         id: item.vod_id.toString(),
@@ -509,36 +556,12 @@ export async function getDetailFromApi(
   }
 
   const videoDetail = data.list[0];
-  let episodes: string[] = [];
-  let titles: string[] = [];
 
-  // 处理播放源拆分
-  if (videoDetail.vod_play_url) {
-    // 先用 $$$ 分割
-    const vod_play_url_array = videoDetail.vod_play_url.split('$$$');
-    // 分集之间#分割，标题和播放链接 $ 分割
-    vod_play_url_array.forEach((url: string) => {
-      const matchEpisodes: string[] = [];
-      const matchTitles: string[] = [];
-      const title_url_array = url.split('#');
-      title_url_array.forEach((title_url: string) => {
-        const episode_title_url = title_url.split('$');
-        if (
-          episode_title_url.length === 2 &&
-          (episode_title_url[1].includes('.m3u8') ||
-            episode_title_url[1].includes('.mp4') ||
-            episode_title_url[1].startsWith('http'))
-        ) {
-          matchTitles.push(episode_title_url[0]);
-          matchEpisodes.push(episode_title_url[1]);
-        }
-      });
-      if (matchEpisodes.length > episodes.length) {
-        episodes = matchEpisodes;
-        titles = matchTitles;
-      }
-    });
-  }
+  // 智能选取最优播放组 (默认强制优先 4K / 原画 / 蓝光)
+  let { episodes, titles } = selectBestEpisodesGroup(
+    videoDetail.vod_play_from,
+    videoDetail.vod_play_url
+  );
 
   // 如果播放源为空，则尝试从内容中解析 m3u8
   if (episodes.length === 0 && videoDetail.vod_content) {
